@@ -65,28 +65,50 @@ userRouter.post('/course/purchases', userAuth, async (req, res)=> {
 
 //Create a end point of purchase a course
 userRouter.post('/course/purchase', userAuth, async (req, res) => {
-    let courseId = req.body.courseId;
-    let useCourseId = await CourseModel.findOne({ _id: courseId });
-    console.log(useCourseId.title)
+    try {
+        const courseId = req.body.courseId;
 
-    let existingPurchase = await PurchaseModel.findOne({ userId: req.userId });
+        if (!courseId) {
+            return res.status(400).json({ message: "Course ID is required" });
+        }
 
-    if(existingPurchase == null){
-        await PurchaseModel.create({
+        const courseIdFound = await CourseModel.findById(courseId);
+        if (!courseIdFound) {
+            return res.status(404).json({ message: "Course not found" });
+        }
+
+        const existingPurchase = await PurchaseModel.findOne({
             userId: req.userId,
-            purchased: {title: useCourseId.title, courseId: useCourseId._id}
-        })
+            'purchased.courseId': courseIdFound._id
+        });
 
-        res.json(`Congratulations, you purchased a ${useCourseId.title}`);
-    }
-    else{
-        await PurchaseModel.updateOne(
-            {userId: req.userId}, 
-            { $push: { purchased: {title: useCourseId.title, courseId: useCourseId._id} } }
-        );
-        res.json(`Congratulations, you added a ${useCourseId.title} to your purchases.`);
-    }
+        if (existingPurchase) {
+            return res.status(400).json({ message: "Course already purchased by this user" });
+        }
 
+        let purchaseModelFound = await PurchaseModel.findOne({ userId: req.userId });
+
+        if (!purchaseModelFound) {
+            await PurchaseModel.create({
+                userId: req.userId,
+                purchased: [{
+                    title: courseIdFound.title,
+                    courseId: courseIdFound._id
+                }]
+            });
+            return res.json({ message: "New purchase record created" });
+        } else {
+            const updatedPurchase = await PurchaseModel.updateOne(
+                { userId: req.userId },
+                { $push: { purchased: { title: courseIdFound.title, courseId: courseIdFound._id } } }
+            );
+            console.log("Updated Purchase:", updatedPurchase);
+            return res.json({ message: "Course added to existing purchase record" });
+        }
+    } catch (error) {
+        console.error("Error processing purchase:", error);
+        return res.status(500).json({ message: "An error occurred while processing the purchase" });
+    }
 });
 
 module.exports = {
